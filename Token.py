@@ -4,6 +4,7 @@ import os
 # --- Configuration ---
 input_folder = r"Clustered Frequencies"
 
+
 # --- Maqam types ---
 maqam_types = ['kurd', 'nahawand', 'segah', 'hijaz', 'rast', 'saba', 'hijazkar', 'bayat']
 
@@ -37,7 +38,9 @@ unique_durations = np.unique(all_durations)
 def create_combined_tokenization_dictionaries(maqam_types, unique_freqs, unique_durations):
     token_to_value = {0: "PAD"}
     value_to_token = {"PAD": 0}
-    current_index = 1
+    token_to_value["UNK"]=1
+    value_to_token[1]="UNK"
+    current_index = 2
 
     # Maqam types
     for m in maqam_types:
@@ -78,7 +81,7 @@ def tokenize_combined(sequence, value_to_token):
         if key in value_to_token:
             tokenized_sequence.append(value_to_token[key])
         else:
-            raise ValueError(f"Unknown element for tokenization: {element}")
+            tokenized_sequence.append(value_to_token[1])
     tokenized_sequence.append(value_to_token["EOS"])
     return tokenized_sequence
 
@@ -116,9 +119,51 @@ def build_token_sequences(type_tokens, freq_tokens, dur_tokens, target_length=No
 type_tokens = [value_to_token[m] for m in maqam_type_labels]
 
 # --- Build tokenized sequences ---
-sequences = build_token_sequences(type_tokens, frequencies, durations, target_length=7, pad_token=0, eos_token=eos_token)
+sequences = build_token_sequences(type_tokens, frequencies, durations, target_length=1024, pad_token=0, eos_token=eos_token)
 
-# --- Show a few sequences ---
-for i, seq in enumerate(sequences[:5]):
-    print(f"Sequence {i}: {seq}")
-    print("Detokenized:", detokenize_combined(seq, token_to_value))
+
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+class MyDataset(Dataset):
+    def __init__(self, data, sequence_length):
+        """
+        Args:
+            data (list of lists): The list of sequences to train the model on.
+            sequence_length (int): The length of each input sequence.
+        """
+        self.data = data
+        self.sequence_length = sequence_length
+
+    def __len__(self):
+        # Number of samples: each sequence can be used to generate (n - sequence_length) samples
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sequence = self.data[idx]
+        # Create the input and target sequence
+        input_sequence = sequence[:-1]  # All except the last element
+        target_sequence = sequence[1:]  # All except the first element
+        
+        # Convert to tensors
+        input_tensor = torch.tensor(input_sequence, dtype=torch.float)
+        target_tensor = torch.tensor(target_sequence, dtype=torch.float)
+        
+        return input_tensor, target_tensor
+
+# Create the dataset
+
+# Sequence length for autoregressive model
+context_size = 128
+
+# Create the dataset
+dataset = MyDataset(sequences, context_size)
+
+# Create the DataLoader
+dataloader = DataLoader(dataset, batch_size=16, shuffle=False)
+
+# Iterate through the DataLoader
+for input_seq, target_seq in dataloader:
+    print("Input Sequence:", input_seq)
+    print("Target Sequence:", target_seq)
+
