@@ -2,7 +2,7 @@ import numpy as np
 import os
 
 # --- Configuration ---
-input_folder = r"\Clustered Frequencies"
+input_folder = r"Clustered Frequencies"
 
 # --- Maqam types ---
 maqam_types = ['kurd', 'nahawand', 'segah', 'hijaz', 'rast', 'saba', 'hijazkar', 'bayat']
@@ -16,8 +16,11 @@ for filename in os.listdir(input_folder):
         if maqam_type:
             try:
                 data = np.load(os.path.join(input_folder, filename))
-                frequencies.append(data['frequencies'])
-                durations.append(data['durations'])
+                # Convert numpy arrays to Python native types
+                freq_array = data['frequencies'].astype(float).tolist()  # Convert to Python floats
+                dur_array = data['durations'].astype(int).tolist()       # Convert to Python ints
+                frequencies.append(freq_array)
+                durations.append(dur_array)
                 maqam_type_labels.append(maqam_type)
             except Exception as e:
                 print(f"Error loading {filename}: {e}")
@@ -25,32 +28,38 @@ for filename in os.listdir(input_folder):
             print(f"Unknown maqam type in file: {filename}")
 
 # --- Flatten all data to extract unique tokens ---
-all_frequencies = np.concatenate(frequencies)
-all_durations = np.concatenate(durations)
+all_frequencies = np.concatenate([np.array(lst) for lst in frequencies])
+all_durations = np.concatenate([np.array(lst) for lst in durations])
 unique_freqs = np.unique(all_frequencies)
 unique_durations = np.unique(all_durations)
 
 # --- Create tokenization dictionaries ---
 def create_combined_tokenization_dictionaries(maqam_types, unique_freqs, unique_durations):
-    token_to_value = {0: "PAD"}  # Reserve 0 for padding
+    token_to_value = {0: "PAD"}
     value_to_token = {"PAD": 0}
     current_index = 1
 
+    # Maqam types
     for m in maqam_types:
         token_to_value[current_index] = m
         value_to_token[m] = current_index
         current_index += 1
 
+    # Frequencies (convert to Python floats)
     for f in unique_freqs:
-        token_to_value[current_index] = float(f)
-        value_to_token[str(float(f))] = current_index
+        py_f = float(f)
+        token_to_value[current_index] = py_f
+        value_to_token[str(py_f)] = current_index
         current_index += 1
 
+    # Durations (convert to Python ints)
     for d in unique_durations:
-        token_to_value[current_index] = int(d)
-        value_to_token[str(int(d))] = current_index
+        py_d = int(d)
+        token_to_value[current_index] = py_d
+        value_to_token[str(py_d)] = current_index
         current_index += 1
 
+    # EOS
     token_to_value[current_index] = "EOS"
     value_to_token["EOS"] = current_index
     return token_to_value, value_to_token
@@ -59,9 +68,12 @@ token_to_value, value_to_token = create_combined_tokenization_dictionaries(maqam
 eos_token = value_to_token["EOS"]
 
 # --- Tokenization utilities ---
-def tokenize_combined(sequence, token_to_value, value_to_token):
+def tokenize_combined(sequence, value_to_token):
     tokenized_sequence = []
     for element in sequence:
+        # Handle numpy types by converting to native Python types
+        if isinstance(element, np.generic):
+            element = element.item()
         key = str(element)
         if key in value_to_token:
             tokenized_sequence.append(value_to_token[key])
@@ -87,10 +99,13 @@ def build_token_sequences(type_tokens, freq_tokens, dur_tokens, target_length=No
             seq = [t]
             end = i + max_pairs if max_pairs else len(freqs)
             for f, d in zip(freqs[i:end], durs[i:end]):
-                seq.extend([f, d])
+                # Tokenize each element
+                f_token = value_to_token[str(float(f))]
+                d_token = value_to_token[str(int(d))]
+                seq.extend([f_token, d_token])
             i = end
 
-            if eos_token:
+            if eos_token is not None:
                 seq.append(eos_token)
             if target_length and len(seq) < target_length:
                 seq += [pad_token] * (target_length - len(seq))
