@@ -1,9 +1,24 @@
 import numpy as np
+import os
 
-# Example inputs (make sure to define these before running)
-# all_frequencies = [...]
-# all_durations = [...]
-# maqam_types = [...]
+# --- Load all frequencies from .npy files ---
+input_folder =r"\Clustered Frequencies"
+
+frequencies = []
+durations=[]
+for filename in os.listdir(input_folder):
+    if filename.endswith('.npz'):
+        try:
+            A=np.load(os.path.join(input_folder, filename))
+            frequencies.append(A['frequencies'])
+            durations.append(A['durations'])
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+
+
+# Flatten all lists into single arrays
+all_frequencies = np.concatenate(frequencies)
+all_durations = np.concatenate(durations)
 
 unique_freqs = np.unique(all_frequencies)
 unique_durations = np.unique(all_durations)
